@@ -1,0 +1,116 @@
+# ============================
+# Warning: Python version must be consistant between:
+#   - project.requires-python
+#   - tool.ruff.target-version
+#   - tool.pyright.pythonVersion
+#
+# Warning: Package name must be consistant between:
+#   - project.scripts
+#   - tool.ruff.lint.isort.known-first-party
+#   - The folder inside 'src/'
+# ============================
+[project]
+name = "report-gen"
+version = "0.0.1"
+description = "report-gen"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "gaaiuss", email = "caio.gui.castro@gmail.com" }]
+requires-python = ">=3.14"
+dependencies = [
+    "django>=6.1.2",
+    "python-dotenv>=1.1.0",
+    "rich>=15.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["ruff", "pyright", "pytest", "pytest-xdist"]
+
+# ============================
+# Linting and auto format (Ruff)
+# ============================
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+fix = true
+show-fixes = true
+indent-width = 4
+exclude = ["venv", ".venv", "env", ".env", "node_modules", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "T201",  # Checks for print statements.
+    "INP001", # Checks for packages that are missing an __init__.py file.
+    "D", # All pydocstyle (D)
+    # Checks that function arguments are annotated with a more specific type 
+    # than Any.
+    "ANN401", 
+    "ERA001", # Checks for commented-out Python code.
+    "A004", # Shadowing Python Builtin.
+    "CPY001", # Missing copyright notice at top of file.
+    "PLC0415", # `import` should be at the top-level of a file
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN201", "S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.ruff.lint.isort]
+# Teaches Ruff what is the main package of the project.
+# It must be the same name of the folder inside the 'src/'.
+known-first-party = ["my_package"]
+
+# ============================
+# Typing (Pyright)
+# ============================
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.14"
+include = ["src", 'tests']
+exclude = [
+    "**/.*",
+    "**/venv",
+    "**/.venv",
+    "**/env",
+    "**/.env",
+    "**/node_modules",
+    "**/__pycache__", 
+]
+venv = ".venv"
+venvPath = "."
+executionEnvironments = [{ root = "src" }]
+
+# Rules disabled
+# reportMissingTypeStubs = "none" # Missing stubs file
+# reportUnknownMemberType = "none" # Type of parameter partially unknown
+
+# ============================
+# Tests (Pytest)
+# ============================
+[tool.pytest.ini_options]
+addopts = "-s --color=yes --tb=short"
+# Add 'src' to Python path during tests. This allows the tests in `tests/` 
+# to import the modules in `src/` without errors.
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+# ============================
+# Build and Setuptools
+# ============================
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+# Informs setuptools to find the packages inside 'src' folder.
+# Essential for layout structure 'src/'.
+where = ["src"]
+
+[tool.setuptools]
+# Maps the root folder to 'src'.
+package-dir = { "" = "src" }
