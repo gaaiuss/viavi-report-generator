@@ -19,6 +19,7 @@ authors = [{ name = "gaaiuss", email = "caio.gui.castro@gmail.com" }]
 requires-python = ">=3.14"
 dependencies = [
     "django>=6.1.2",
+    "pandas>=3.1.1",
     "python-dotenv>=1.1.0",
     "rich>=15.0.0",
 ]
@@ -49,7 +50,8 @@ ignore = [
     "ERA001", # Checks for commented-out Python code.
     "A004", # Shadowing Python Builtin.
     "CPY001", # Missing copyright notice at top of file.
-    "PLC0415", # `import` should be at the top-level of a file
+    "PLC0415", # `import` should be at the top-level of a file.
+    "S606", # Start a process without a shell.
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -87,7 +89,10 @@ executionEnvironments = [{ root = "src" }]
 
 # Rules disabled
 # reportMissingTypeStubs = "none" # Missing stubs file
-# reportUnknownMemberType = "none" # Type of parameter partially unknown
+reportUnknownMemberType = "none" # Type of parameter partially unknown
+reportAttributeAccessIssue = "none"
+reportUnknownVariableType = "none"
+reportUnknownArgumentType = "none"
 
 # ============================
 # Tests (Pytest)
