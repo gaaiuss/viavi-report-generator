@@ -2,39 +2,49 @@ import csv
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
-from utils.converter.src.vars import CSV_CONFIG_FILE, CSV_OUTPUT_FILE, JSON_OUTPUT_FILE
+from utils.converter.vars import (
+    CSV_CONFIG_FILE,
+    CSV_OUTPUT_FILE,
+    JSON_OUTPUT_FILE,
+    JSON_TEST_DATA_FOLDER,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 class Converter:
-    def __init__(self, json_files: list[str]) -> None:
-        self.json_files = json_files
-        self.merged_data = self.merge_json_files()
+    def __init__(self, json_files_path: Iterator[Any]) -> None:
+        self.merged_json = []
+        self.json_files = json_files_path
 
-        self.write_merged_data()
+        self.merge_json_files()
+        self.format_json()
+        self.write_json()
 
-    def merge_json_files(self) -> list[list[str] | Any]:
-        merged_data = []
+    def merge_json_files(self) -> None:
+        for json_file in self.json_files:
+            json_path = Path(json_file)
 
-        for file_path in self.json_files:
-            path_obj = Path(file_path)
-
-            with Path.open(path_obj, encoding="utf-8") as file:
+            with Path.open(json_path, encoding="utf-8") as file:
                 data = json.load(file)
 
                 if isinstance(data, list):
-                    self.merged_data.extend(data)
+                    self.merged_json.extend(data)
                 else:
-                    self.merged_data.append(data)
+                    self.merged_json.append(data)
 
-        return merged_data
+    def format_json(self) -> None:
+        self.merged_json = self.format_json_list_keys()
+        self.merged_json = self.format_serial_number()
 
-    def write_merged_data(self) -> None:
+    def write_json(self) -> None:
         with Path.open(JSON_OUTPUT_FILE, "w", encoding="utf-8") as file:
-            json.dump(self.merged_data, file)
+            json.dump(self.merged_json, file)
 
     def format_keys(
         self,
@@ -82,35 +92,21 @@ class Converter:
 
     def format_json_list_keys(
         self,
-        json_list: list[dict[str, Any]],
-    ) -> list[Any]:
-        formatted_json_list = []
+    ) -> list[dict[str, str]]:
+        formatted_json_list: list[dict[str, str]] = []
 
-        for json_lmt in json_list:
+        for json_lmt in self.merged_json:
             formatted_json_lmt = self.format_keys(json_lmt)
             formatted_json_list.append(formatted_json_lmt)
 
         return formatted_json_list
 
-    def load_json_from_file_to_format(self) -> list[Any]:
-        with Path.open(JSON_OUTPUT_FILE, encoding="utf-8") as file:
-            json_file = json.load(file)
-            serial_formatted_json_file = self.fmt_serial_number(json_file)
-
-            return self.format_json_list_keys(serial_formatted_json_file)
-
-    def fmt_4ascii_4hex(self, serial: list[int]) -> str:
-        ascii_part = "".join(chr(b) for b in serial[:4])
-        hex_part = "".join(f"{b:02X}" for b in serial[4:])
-        return f"{ascii_part}-{hex_part}"
-
-    def fmt_serial_number(
+    def format_serial_number(
         self,
-        json_list: list[dict[str, str]],
     ) -> list[dict[str, str]]:
         fmt_json = []
 
-        for json_obj in json_list:
+        for json_obj in self.merged_json:
             for test in json_obj.get("tests", []):
                 serial_path = test.get("results", {}).get("data", {}).get("gpon", {})
 
@@ -123,16 +119,10 @@ class Converter:
 
         return fmt_json
 
-    def load_column_order(self, csv_config_path: Path) -> list[str]:
-        with Path.open(csv_config_path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            return [
-                row["column"]
-                for row in sorted(
-                    reader,
-                    key=lambda r: int(r["order"]),
-                )
-            ]
+    def fmt_4ascii_4hex(self, serial: list[int]) -> str:
+        ascii_part = "".join(chr(b) for b in serial[:4])
+        hex_part = "".join(f"{b:02X}" for b in serial[4:])
+        return f"{ascii_part}-{hex_part}"
 
     def write_csv(self, resource: list[dict[str, str]]) -> None:
         column_order = self.load_column_order(CSV_CONFIG_FILE)
@@ -145,6 +135,17 @@ class Converter:
                 ordered_row = {col: row.get(col, "") for col in column_order}
                 writer.writerow(ordered_row)
 
+    def load_column_order(self, csv_config_path: Path) -> list[str]:
+        with Path.open(csv_config_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            return [
+                row["column"]
+                for row in sorted(
+                    reader,
+                    key=lambda r: int(r["order"]),
+                )
+            ]
+
     def save_to_excel(self, output_path: str) -> str:
         data_frame = pd.read_csv(CSV_OUTPUT_FILE, encoding="latin-1")
         excel_path = output_path.partition(".")[0] + ".xlsx"
@@ -153,3 +154,9 @@ class Converter:
 
     def open_report(self, file_path: str) -> None:
         os.startfile(file_path)
+
+
+if __name__ == "__main__":
+    PDFS_FOLDER_PATH = JSON_TEST_DATA_FOLDER
+    PDF_FILES_PATH = Path(PDFS_FOLDER_PATH).iterdir()
+    converter = Converter(PDF_FILES_PATH)
