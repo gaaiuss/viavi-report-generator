@@ -2,35 +2,30 @@ import csv
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pandas as pd
 
 from utils.converter.vars import (
     CSV_CONFIG_FILE,
     CSV_OUTPUT_FILE,
-    JSON_OUTPUT_FILE,
-    JSON_TEST_DATA_FOLDER,
+    JSON_FILES_PATHS,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
 
 
 class Converter:
-    def __init__(self, json_files_path: Iterator[Any]) -> None:
-        self.merged_json = []
+    def __init__(self, json_files_path: list[Path]) -> None:
         self.json_files = json_files_path
+        self.merged_json = []
 
         self.merge_json_files()
         self.format_json()
-        self.write_json()
+        # print(self.merged_json, len(self.merged_json))
+        self.write_csv()
 
     def merge_json_files(self) -> None:
         for json_file in self.json_files:
-            json_path = Path(json_file)
-
-            with Path.open(json_path, encoding="utf-8") as file:
+            with Path.open(json_file, encoding="utf-8") as file:
                 data = json.load(file)
 
                 if isinstance(data, list):
@@ -39,18 +34,18 @@ class Converter:
                     self.merged_json.append(data)
 
     def format_json(self) -> None:
-        self.merged_json = self.format_json_list_keys()
-        self.merged_json = self.format_serial_number()
+        self.merged_json = self.format_all_json_list_keys()
+        self.merged_json = self.format_ont_serial_number()
 
-    def write_json(self) -> None:
-        with Path.open(JSON_OUTPUT_FILE, "w", encoding="utf-8") as file:
-            json.dump(self.merged_json, file)
+    def format_all_json_list_keys(self) -> list[dict[str, str]]:
+        return [self.format_json_keys(json_item) for json_item in self.merged_json]
 
-    def format_keys(
+    def format_json_keys(
         self,
-        json_item: Any,
+        json_item: dict[str, Any],
         parent_key: str = "",
-    ) -> dict[str, Any]:
+        result: dict[str, Any] | None = None,
+    ) -> dict[str, str]:
         """
         Format all json items into a single "key, value" pattern.
 
@@ -63,76 +58,64 @@ class Converter:
         When there are no more lists or dicts items: Append the formatted key
         to its respective item.
         """
-        result = {}
+        if result is None:
+            result = {}
 
-        # Format the dict json item key name appending the parent key to its key
-        # if it has a parent.
-        if isinstance(json_item, dict):
-            for key, value in json_item.items():
-                full_key = f"{parent_key}.{key}" if parent_key else key
+        for key, value in json_item.items():
+            if isinstance(value, dict):
+                for value_key, value_value in value.items():
+                    new_key = (
+                        f"{parent_key}.{value_key}"
+                        if parent_key
+                        else f"{key}.{value_key}"
+                    )
+                    result[new_key] = value_value
 
-                # calls itself again with the correct key
-                self.format_keys(value, full_key)
-
-        # Checks if the json item is a list and if all its children are instances
-        # of a list or dict. If this is the case, flattens then with enumerate
-        # to send the correct keys to the final result.
-        elif isinstance(json_item, list) and all(
-            isinstance(i, (dict, list)) for i in json_item
-        ):
-            for _index, item in enumerate(json_item):
-                self.format_keys(item)
-
-        # If the items are already flattened, append the correct item in the
-        # result dict
-        else:
-            result[parent_key] = json_item
+            elif isinstance(value, list):
+                for i in value:
+                    self.format_json_keys(i, key, result)
 
         return result
 
-    def format_json_list_keys(
+    def new_format_keys(self) -> None: ...
+
+    def format_ont_serial_number(
         self,
     ) -> list[dict[str, str]]:
-        formatted_json_list: list[dict[str, str]] = []
-
-        for json_lmt in self.merged_json:
-            formatted_json_lmt = self.format_keys(json_lmt)
-            formatted_json_list.append(formatted_json_lmt)
-
-        return formatted_json_list
-
-    def format_serial_number(
-        self,
-    ) -> list[dict[str, str]]:
+        """
+        Format the ONT Serial Number which part of it is ascii and the other
+        hexadecimal numbers.
+        """
         fmt_json = []
 
         for json_obj in self.merged_json:
-            for test in json_obj.get("tests", []):
-                serial_path = test.get("results", {}).get("data", {}).get("gpon", {})
+            serial_number_key = "results.data.gpon.ontSerialNumber"
+            serial_number = json_obj.get(serial_number_key, {})
 
-                if isinstance(serial_path.get("ontSerialNumber"), list):
-                    serial_number = serial_path["ontSerialNumber"]
-                    fmt_serial = self.fmt_4ascii_4hex(serial_number)
-                    serial_path["ontSerialNumber"] = fmt_serial
+            # If it finds the serial pattern (list of hexadecimal) formats the
+            # serial to ascii
+            if isinstance(serial_number, list):
+                fmt_serial = self.format_to_4ascii_4hex(serial_number)
+                json_obj[serial_number_key] = fmt_serial
 
             fmt_json.append(json_obj)
 
         return fmt_json
 
-    def fmt_4ascii_4hex(self, serial: list[int]) -> str:
-        ascii_part = "".join(chr(b) for b in serial[:4])
-        hex_part = "".join(f"{b:02X}" for b in serial[4:])
+    def format_to_4ascii_4hex(self, serial_number: list[int]) -> str:
+        ascii_part = "".join(chr(b) for b in serial_number[:4])
+        hex_part = "".join(f"{b:02X}" for b in serial_number[4:])
         return f"{ascii_part}-{hex_part}"
 
-    def write_csv(self, resource: list[dict[str, str]]) -> None:
+    def write_csv(self) -> None:
         column_order = self.load_column_order(CSV_CONFIG_FILE)
 
         with Path.open(CSV_OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=column_order)
             writer.writeheader()
 
-            for row in resource:
-                ordered_row = {col: row.get(col, "") for col in column_order}
+            for json_item in self.merged_json:
+                ordered_row = {col: json_item.get(col, "") for col in column_order}
                 writer.writerow(ordered_row)
 
     def load_column_order(self, csv_config_path: Path) -> list[str]:
@@ -155,8 +138,9 @@ class Converter:
     def open_report(self, file_path: str) -> None:
         os.startfile(file_path)
 
+    def __str__(self) -> str:
+        return f"{__class__.__name__}\n(JSON files selected:{self.json_files})"
+
 
 if __name__ == "__main__":
-    PDFS_FOLDER_PATH = JSON_TEST_DATA_FOLDER
-    PDF_FILES_PATH = Path(PDFS_FOLDER_PATH).iterdir()
-    converter = Converter(PDF_FILES_PATH)
+    converter = Converter(JSON_FILES_PATHS)

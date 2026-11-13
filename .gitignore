@@ -1,3 +1,7 @@
+# This project only
+test_data/
+output/
+
 .DS_Store
 db.json
 
